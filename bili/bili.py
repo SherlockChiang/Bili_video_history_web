@@ -8,9 +8,9 @@ from io import BytesIO
 import http.cookiejar as cookielib
 from PIL import Image
 import os
-import pandas as pd
-from pandas.api.types import CategoricalDtype
-import xlwt
+# import pandas as pd
+# from pandas.api.types import CategoricalDtype
+# import xlwt
 import matplotlib.pyplot as plt 
 import matplotlib.cm as cm 
 import numpy as np 
@@ -58,59 +58,43 @@ class showpng(Thread):
         img = Image.open(BytesIO(self.data))
         img.show()
 
-
-def islogin(session):
-    try:
-        session.cookies.load(ignore_discard=True)
-    except Exception:
-        pass
-    loginurl = session.get("https://api.bilibili.com/x/web-interface/nav", verify=False, headers=headers).json()
-    if loginurl['code'] == 0:
-        print('Cookies值有效，',loginurl['data']['uname'],'，已登录！')
-        return session, True
-    else:
-        print('请使用b站app扫码登录！')
-        return session, False
+def login_qrcode():
+    session = requests.session()
+    getlogin = session.get('https://passport.bilibili.com/qrcode/getLoginUrl', headers=headers).json()
+    loginurl = requests.get(getlogin['data']['url'], headers=headers).url
+    oauthKey = getlogin['data']['oauthKey']
+    qr = qrcode.QRCode()
+    qr.add_data(loginurl)
+    img = qr.make_image()
+    a = BytesIO()
+    img.save(a, 'png')
+    png = a.getvalue()
+    a.close()
+    return png, oauthKey, session
 
 
 def bzlogin():
-    if not os.path.exists('bzcookies.txt'):
-        with open("bzcookies.txt", 'w') as f:
-            f.write("")
-    session = requests.session()
-    session.cookies = cookielib.LWPCookieJar(filename='bzcookies.txt')
-    session, status = islogin(session)
-    if not status:
-        getlogin = session.get('https://passport.bilibili.com/qrcode/getLoginUrl', headers=headers).json()
-        loginurl = requests.get(getlogin['data']['url'], headers=headers).url
-        oauthKey = getlogin['data']['oauthKey']
-        qr = qrcode.QRCode()
-        qr.add_data(loginurl)
-        img = qr.make_image()
-        a = BytesIO()
-        img.save(a, 'png')
-        png = a.getvalue()
-        a.close()
-        t = showpng(png)
-        t.start()
-        tokenurl = 'https://passport.bilibili.com/qrcode/getLoginInfo'
-        while 1:
-            qrcodedata = session.post(tokenurl, data={'oauthKey': oauthKey, 'gourl': 'https://www.bilibili.com/'}, headers=headerss).json()
-            # print(qrcodedata)
-            if '-5' in str(qrcodedata['data']):
-                print('已扫码，请确认！')
-            elif '-2' in str(qrcodedata['data']):
-                print('二维码已失效，请重新运行！')
-            elif 'True' in str(qrcodedata['status']):
-                print('已确认，登入成功！')
-                session.get(qrcodedata['data']['url'], headers=headers)
-                break
-            time.sleep(2)
-        session.cookies.save()
+    png, oauthKey, session = login_qrcode()
+    t = showpng(png)
+    t.start()
+    tokenurl = 'https://passport.bilibili.com/qrcode/getLoginInfo'
+    while 1:
+        qrcodedata = session.post(tokenurl, data={'oauthKey': oauthKey, 'gourl': 'https://www.bilibili.com/'}, headers=headerss).json()
+        # print(qrcodedata)
+        if '-5' in str(qrcodedata['data']):
+            print('已扫码，请确认！')
+        elif '-2' in str(qrcodedata['data']):
+            print('二维码已失效，请重新运行！')
+        elif 'True' in str(qrcodedata['status']):
+            print('已确认，登入成功！')
+            session.get(qrcodedata['data']['url'], headers=headers)
+            break
+        time.sleep(2)
+    session.cookies.save()
+
     return session
 
-if __name__ == '__main__':
-    session = bzlogin()
+session = bzlogin()
 # 这里参考了https://blog.csdn.net/qq_38316655/article/details/121190002
 cookies_dict = requests.utils.dict_from_cookiejar(session.cookies)
 
